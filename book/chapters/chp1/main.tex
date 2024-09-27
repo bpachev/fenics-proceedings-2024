@@ -184,18 +184,35 @@ While matrix assembly is a crucial part of the finite element method, most solve
 We compared the runtimes of the original solver on a 72-core Grace CPU to the CUDA-accelerated version using an H100 GPU. Average timing results over 100 time steps for each component of the solver are provided in Table \ref{tab:navier_stokes_results}.
 \begin{table}[t]
     \centering
-\begin{tabular}{llrrrr}
+\begin{tabular}{clrrrr}
 \toprule
-Stage & Solver/PC & GPU Assembly & GPU Solve & CPU Assembly & CPU Solve \\
+      &                 & \multicolumn{2}{c}{H100 (GPU)} & \multicolumn{2}{c}{Grace (CPU)} \\
+                          \cmidrule(lr){3-4}               \cmidrule(lr){5-6}
+Stage & Solver/preconditioner       & Assembly & Solve               & Assembly & Solve \\
+%Stage & Solver/PC & GPU Assembly & GPU Solve & CPU Assembly & CPU Solve \\
 \midrule
-1 & BCGS/Jacobi     & 0.348 & 1.601 & 0.906 & 6.339 \\
-2 & GMRES/BoomerAMG & 0.009 & 0.013 & 0.007 & 0.108 \\
-3 & CG/Jacobi       & 0.004 & 0.079 & 0.013 & 0.564 \\
+    1 & BCGS/Jacobi     &    0.348 &               1.601 &    0.906 & 6.339 \\
+    2 & GMRES/BoomerAMG &    0.009 &               0.013 &    0.007 & 0.108 \\
+    3 & CG/Jacobi       &    0.004 &               0.079 &    0.013 & 0.564 \\
 \bottomrule
 \end{tabular}
 \caption{Runtime for each stage of the Navier--Stokes solver in seconds.}
     \label{tab:navier_stokes_results}
 \end{table}
+% \begin{table}[t]
+%     \centering
+% \begin{tabular}{llrrrr}
+% \toprule
+% Stage & Solver/PC & GPU Assembly & GPU Solve & CPU Assembly & CPU Solve \\
+% \midrule
+% 1 & BCGS/Jacobi     & 0.348 & 1.601 & 0.906 & 6.339 \\
+% 2 & GMRES/BoomerAMG & 0.009 & 0.013 & 0.007 & 0.108 \\
+% 3 & CG/Jacobi       & 0.004 & 0.079 & 0.013 & 0.564 \\
+% \bottomrule
+% \end{tabular}
+% \caption{Runtime for each stage of the Navier--Stokes solver in seconds.}
+%     \label{tab:navier_stokes_results}
+% \end{table}
 Overall, the CUDA-accelerated solver averaged 2.07\,s per time step, while the original solver took 7.89\,s per time step. While the solution time was dominated by the linear solve for the first stage, assembly comprised over 10\% of the total runtime for both the GPU and CPU codes. We note that compared to the Poisson example, the assembly speedup for the Navier--Stokes code is smaller. We hypothesize this is due to the use of second-order elements for the velocity field. Higher order elements are known to pose difficulties for the GPU offloading approach used within CUDOLFINx because the generated tabulate tensor kernels can require a large number of registers. This results in a phenomenon known as \textit{register spilling}, in which the GPU kernels are forced to utilize global memory to store some local variables, which degrades performance. Solutions include retooling of the generated code to require less constant memory, or assembling each element with multiple GPU threads to increase the available number of registers. Both of these solutions would require substantial enhancements to FFCX, the form compiler within the FEniCS project. Nevertheless, the attained speedup for assembly with quadratic elements in this case is still significant.
 
 \section*{Conclusion}
