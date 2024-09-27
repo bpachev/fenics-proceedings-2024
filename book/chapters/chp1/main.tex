@@ -160,7 +160,7 @@ Tidal 3 & 3,380,000 & 1,692,601 &     0.95 &        9.66 &     5.36 &     5.60 \
 
 Interestingly, the speedups differ for each variational form. The DG residual vector assembly has a much better speedup factor than the SUPG kernels, while the Jacobian matrix assembly is much worse. On the other hand, SUPG has consistent speedups for both residual and Jacobian matrix assembly.
 Using NVIDIA's Nsight Compute profiler, we can better understand the difference in performance between DG and SUPG.
-Profiler results for the 'Tidal 3' testcase are presented in Table \ref{tab:tidal_prof}. The profiler reports \textit{occupancy}, which indicates the percentage of active threads on the GPU relative to the total GPU thread capacity. Occupancy can be limited by the resources needed per thread, such as shared memory or registers. It can also be impacted by excessive branching or other kernel design flaws. In our case, the generated assembly kernels required a high number of registers, which limited the occupancy to under 20\%. However, both the DG and SUPG kernels were able to utilize a large fraction of the device throughput - memory in the case of DG and compute in the case of SUPG.
+Profiler results for the ``Tidal 3'' testcase are presented in Table \ref{tab:tidal_prof}. The profiler reports \textit{occupancy}, which indicates the percentage of active threads on the GPU relative to the total GPU thread capacity. Occupancy can be limited by the resources needed per thread, such as shared memory or registers. It can also be impacted by excessive branching or other kernel design flaws. In our case, the generated assembly kernels required a high number of registers, which limited the occupancy to under 20\%. However, both the DG and SUPG kernels were able to utilize a large fraction of the device throughput - memory in the case of DG and compute in the case of SUPG.
 \begin{table}[t]
     \centering
 \begin{tabular}{llrrrr}
@@ -168,8 +168,8 @@ Profiler results for the 'Tidal 3' testcase are presented in Table \ref{tab:tida
 Method & Kernel & \begin{tabular}{@{}l}Theoretical\\ Occupancy\end{tabular} & \begin{tabular}{@{}l}Achieved\\ Occupancy\end{tabular} & \begin{tabular}{@{}l}Memory\\ Throughput\end{tabular} & \begin{tabular}{@{}l}Compute\\ Throughput\end{tabular} \\
 \midrule
 DG   & Jacobian & 12.50\,\% & 12.33\,\% & 41.44\,\% & 10.43\,\% \\
-SUPG & Jacobian & 12.50\,\% & 12.33\,\% & 48.66\,\% & 59.31\,\% \\
 DG   & residual & 18.75\,\% & 18.74\,\% & 64.97\,\% & 18.20\,\% \\
+SUPG & Jacobian & 12.50\,\% & 12.33\,\% & 48.66\,\% & 59.31\,\% \\
 SUPG & residual & 12.50\,\% & 12.39\,\% &  5.64\,\% & 77.85\,\% \\
 \bottomrule
 \end{tabular}
