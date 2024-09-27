@@ -64,12 +64,12 @@ We begin with two examples of the performance of the GPU assembly kernels in CUD
 %\end{equation}
 %with $v$ a test function assumed to be zero on $\Gamma_D$. Solving the variational problem requires the assembly of a stiffness matrix on the left side, as well as a load vector on the right side. The dominant step in assembly is the stiffness matrix.
 
-Here we consider the problem of assembling a stiffness matrix for the solution of the Poisson equation on the unit cube. We use a Lagrange finite element space, with tetrahedral elements and a uniform discretization. Table \ref{tab:meshes} shows the meshes used in this and the subsequent studies. We compared the performance of the CUDOLFINx assembly on four uniform meshes for the Poisson problem on an NVIDIA H100 GPU to DOLFINx assembly using 72 MPI process on an NVIDIA Grace CPU. For each mesh, we report the throughput in millions of degrees of freedom per second (mdofs/s). The results are summarized in Table \ref{tab:poisson_results}. Examining the results, the GPU doesn't appear fully saturated for the first two meshes, both of which have significantly less than one million degrees of freedom. This suggests that problems with approximately one million degrees of freedom or greater are needed to maximize the benefits of GPU acceleration. In the original exploration of GPU acceleration for FEniCSx, on which this work is based, a throughput of 189 mdofs/s was reported for the Poisson assembly problem using the Uniform 3 mesh on an NVIDIA V100 GPU \citep{trotter2023targeting}. In this study, we attained a throughput of 376 mdofs/s for the same mesh with an H100 GPU. The improved performance is unsurprising given that the H100 is a newer model with more parallel cores and a higher memory throughput.
+Here we consider the problem of assembling a stiffness matrix for the solution of the Poisson equation on the unit cube. We use a Lagrange finite element space, with tetrahedral elements and a uniform discretization. Table \ref{tab:meshes} shows the meshes used in this and the subsequent studies. We compared the performance of the CUDOLFINx assembly on four uniform meshes for the Poisson problem on an NVIDIA H100 GPU to DOLFINx assembly using 72 MPI process on an NVIDIA Grace CPU. For each mesh, we report the throughput in millions of degrees of freedom per second (MDOF/s). The results are summarized in Table \ref{tab:poisson_results}. Examining the results, the GPU doesn't appear fully saturated for the first two meshes, both of which have significantly less than one million degrees of freedom. This suggests that problems with approximately one million degrees of freedom or greater are needed to maximize the benefits of GPU acceleration. In the original exploration of GPU acceleration for FEniCSx, on which this work is based, a throughput of 189\,MDOF/s was reported for the Poisson assembly problem using the Uniform 3 mesh on an NVIDIA V100 GPU \citep{trotter2023targeting}. In this study, we attained a throughput of 376\,MDOF/s for the same mesh with an H100 GPU. The improved performance is unsurprising given that the H100 is a newer model with more parallel cores and a higher memory throughput.
 \begin{table}[t]
     \centering
-\begin{tabular}{lrrr}
+\begin{tabular}{llrr}
 \toprule
-Mesh & Usecase & Cells & Vertices\\
+Mesh & Solver & Cells & Vertices\\
 \midrule
 Uniform 1 & Poisson & 1,296,000 & 226,981 \\
 Uniform 2 & Poisson & 3,072,000 & 531,441 \\
@@ -92,8 +92,8 @@ channel3D-lc003 & Navier--Stokes & 1,995,628 & 355,319 \\
 Mesh & H100 GPU & Grace CPU \\
 \midrule
 Uniform 1 & 182.8 & 0.48 \\
-Uniform 2 & 297.52 & 1.16 \\
-Uniform 3 & 376.46 & 9.13 \\
+Uniform 2 & 297.5 & 1.16 \\
+Uniform 3 & 376.5 & 9.13 \\
 Uniform 4 & 373.3 & 8.94 \\
 \bottomrule
 \end{tabular}
@@ -109,14 +109,16 @@ Table \ref{tab:swe_a100_vs_epyc} summarizes the results of the experiment.
     \centering
     \begin{tabular}{lrrrr}
 \toprule
-Mesh & DG Jacobian & DG Residual & SUPG Jacobian & SUPG Residual \\
+        & \multicolumn{2}{c}{DG} & \multicolumn{2}{c}{SUPG} \\
+          \cmidrule(lr){2-3}       \cmidrule(lr){4-5}
+Mesh    & Jacobian & Residual    & Jacobian & Residual \\
 \midrule
-Tidal 1 & 0.98 & 9.21 & 5.36 & 6.78 \\
-Tidal 2 & 0.99 & 12.18 & 5.51 & 6.84 \\
-Tidal 3 & 0.95 & 9.66 & 5.36 & 5.60 \\
+Tidal 1 &     0.98 &        9.21 &     5.36 &     6.78 \\
+Tidal 2 &     0.99 &       12.18 &     5.51 &     6.84 \\
+Tidal 3 &     0.95 &        9.66 &     5.36 &     5.60 \\
 \bottomrule
 \end{tabular}
-    \caption{Speedups of assembly kernels on an NVIDIA A100 GPU relative to a 64-core AMD Epyc CPU. Larger numbers indicate faster GPU runtimes.}
+    \caption{Speedup of assembly kernels on an NVIDIA A100 GPU relative to a 64-core AMD Epyc CPU. Larger numbers indicate faster GPU runtimes.}
     \label{tab:swe_a100_vs_epyc}
 \end{table}
 
@@ -125,14 +127,14 @@ Using NVIDIA's Nsight Compute profiler, we can better understand the difference 
 Profiler results for the 'Tidal 3' testcase are presented in Table \ref{tab:tidal_prof}. The profiler reports \textit{occupancy}, which indicates the percentage of active threads on the GPU relative to the total GPU thread capacity. Occupancy can be limited by the resources needed per thread, such as shared memory or registers. It can also be impacted by excessive branching or other kernel design flaws. In our case, the generated assembly kernels required a high number of registers, which limited the occupancy to under 20\%. However, both the DG and SUPG kernels were able to utilize a large fraction of the device throughput - memory in the case of DG and compute in the case of SUPG.
 \begin{table}[t]
     \centering
-\begin{tabular}{rrrrrr}
+\begin{tabular}{llrrrr}
 \toprule
 Method & Kernel & \begin{tabular}{@{}l}Theoretical\\ Occupancy\end{tabular} & \begin{tabular}{@{}l}Achieved\\ Occupancy\end{tabular} & \begin{tabular}{@{}l}Memory\\ Throughput\end{tabular} & \begin{tabular}{@{}l}Compute\\ Throughput\end{tabular} \\
 \midrule
-DG & jacobian & 12.50\,\% & 12.33\% & 41.44\,\% & 10.43\,\% \\
-SUPG & jacobian & 12.50\,\% & 12.33\,\% & 48.66\,\% & 59.31\,\% \\
-DG & residual & 18.75\,\% & 18.74\,\% & 64.97\,\% & 18.20\,\% \\
-SUPG & residual & 12.50\,\% & 12.39\,\% & 5.64\,\% & 77.85\,\% \\
+DG   & Jacobian & 12.50\,\% & 12.33\,\% & 41.44\,\% & 10.43\,\% \\
+SUPG & Jacobian & 12.50\,\% & 12.33\,\% & 48.66\,\% & 59.31\,\% \\
+DG   & residual & 18.75\,\% & 18.74\,\% & 64.97\,\% & 18.20\,\% \\
+SUPG & residual & 12.50\,\% & 12.39\,\% &  5.64\,\% & 77.85\,\% \\
 \bottomrule
 \end{tabular}
 \caption{Profiling statistics for the GPU assembly kernels on a square mesh.}
@@ -150,15 +152,15 @@ We compared the runtimes of the original solver on a 72-core Grace CPU to the CU
 \toprule
 Stage & Solver/PC & GPU Assembly & GPU Solve & CPU Assembly & CPU Solve \\
 \midrule
-1 & BCGS/JACOBI & 0.348 & 1.601 & 0.906 & 6.339 \\
+1 & BCGS/Jacobi     & 0.348 & 1.601 & 0.906 & 6.339 \\
 2 & GMRES/BoomerAMG & 0.009 & 0.013 & 0.007 & 0.108 \\
-3 & CG/JACOBI & 0.004 & 0.079 & 0.013 & 0.564 \\
+3 & CG/Jacobi       & 0.004 & 0.079 & 0.013 & 0.564 \\
 \bottomrule
 \end{tabular}
 \caption{Runtime for each stage of the Navier--Stokes solver in seconds.}
     \label{tab:navier_stokes_results}
 \end{table}
-Overall, the CUDA-accelerated solver averaged 2.07s per time step, while the original solver took 7.89s per time step. While the solution time was dominated by the linear solve for the first stage, assembly comprised over 10\% of the total runtime for both the GPU and CPU codes. We note that compared to the Poisson example, the assembly speedup for the Navier--Stokes code is smaller. We hypothesize this is due to the use of second-order elements for the velocity field. Higher order elements are known to pose difficulties for the GPU offloading approach used within CUDOLFINx because the generated tabulate tensor kernels can require a large number of registers. This results in a phenomenon known as \textit{register spilling}, in which the GPU kernels are forced to utilize global memory to store some local variables, which degrades performance. Solutions include retooling of the generated code to require less constant memory, or assembling each element with multiple GPU threads to increase the available number of registers. Both of these solutions would require substantial enhancements to FFCX, the form compiler within the FEniCS project. Nevertheless, the attained speedup for assembly with quadratic elements in this case is still significant.
+Overall, the CUDA-accelerated solver averaged 2.07\,s per time step, while the original solver took 7.89\,s per time step. While the solution time was dominated by the linear solve for the first stage, assembly comprised over 10\% of the total runtime for both the GPU and CPU codes. We note that compared to the Poisson example, the assembly speedup for the Navier--Stokes code is smaller. We hypothesize this is due to the use of second-order elements for the velocity field. Higher order elements are known to pose difficulties for the GPU offloading approach used within CUDOLFINx because the generated tabulate tensor kernels can require a large number of registers. This results in a phenomenon known as \textit{register spilling}, in which the GPU kernels are forced to utilize global memory to store some local variables, which degrades performance. Solutions include retooling of the generated code to require less constant memory, or assembling each element with multiple GPU threads to increase the available number of registers. Both of these solutions would require substantial enhancements to FFCX, the form compiler within the FEniCS project. Nevertheless, the attained speedup for assembly with quadratic elements in this case is still significant.
 
 \section*{Conclusion}
 
