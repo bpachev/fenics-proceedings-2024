@@ -93,25 +93,12 @@ The assembled matrix and vector are provided in the form of \pythoninline{CUDAMa
 
 Offloading matrix or vector assembly to a GPU typically results in faster assembly, but it also incurs overheads due to copying necessary data structures to the device, as well as runtime compilation of CUDA assembly kernels. For large enough problems, the overhead is small compared to the assembly itself. Moreover, the overhead is incurred only once per form, and is therefore negligible for applications that require repeated assembly operations. Such use cases are very common and include time-dependent or nonlinear problems.
 
-Below, we show how a typical FEniCSx code with repeated assembly might be modified to support GPU acceleration. Boundary conditions are excluded for brevity---however, complete working examples with boundary conditions are available in the Github repositories referenced in this chapter.
+Below, we show how a simplified FEniCSx code for Newton iteration might be modified to support GPU acceleration. Boundary conditions are excluded for brevity---however, complete working examples with boundary conditions are available in the Github repositories referenced in this chapter. We take for our equation a nonlinear version of Poisson's equation with an extra cubic term in $u$. We begin by initializing PETSc data structures needed for assembly and linear algebra.
 \begin{python}
-from mpi4py import MPI
-import dolfinx.fem.petsc as petsc_fem
-from dolfinx import fem, mesh
 from petsc4py import PETSc
-import cudolfinx as cufem
-import ufl
-from ufl import dx, inner, grad
-
 use_cuda = True
-N=1000
-domain = mesh.create_unit_square(MPI.COMM_WORLD, N, N)
-V = fem.functionspace(domain, ("Lagrange", 1))
 u = fem.Function(V)
 u_update = fem.Function(V)
-f = fem.Function(V)
-f.interpolate(lambda x: x[0]**2 + x[1])
-v = ufl.TestFunction(V)
 residual = (f * v - inner(grad(u), grad(v)) + u**3 * v) * dx
 jacobian = ufl.derivative(residual, u)
 
@@ -127,7 +114,9 @@ else:
   residual, jacobian = fem.form(residual), fem.form(jacobian)
   L = petsc_fem.create_vector(residual)
   A = petsc_fem.create_matrix(jacobian)
-
+\end{python}
+The next step is to create the linear solver object. This requires a slight syntactical change when using cuDOLFINx to extract the underlying PETSc matrix from the assembled \pythoninline{CUDAMatrix}.
+\begin{python}
 ksp = PETSc.KSP().create(domain.comm)
 ksp.setType("gmres")
 ksp.getPC().setType("jacobi")
@@ -136,7 +125,9 @@ if use_cuda:
   ksp.setOperators(A.mat)
 else:
   ksp.setOperators(A)
-
+\end{python}
+Finally, we reach the Newton iteration loop. Note the use of PETSc operations to add the computed Newton update to the solution, instead of vectorized numpy operations as is common in FEniCSx codes. This allows the computation to happen on the GPU, and is the reason for requiring that \pythoninline{u_update.vector} and \pythoninline{u.vector} be PETSc CUDA vectors.
+\begin{python}
 for i in range(5):
   if use_cuda:
     # by default entries are zeroed prior to assembly
@@ -155,6 +146,9 @@ for i in range(5):
   rhs.scale(-1)
   ksp.solve(rhs, u_update.vector)
   u.vector.axpy(1.0, u_update.vector)
+\end{python}
+A final step remains within the loop. The updated solution needs to be copied back to the underlying DOLFINx function, which resides on the host. This is not required for regular PETSc vectors, which share the same memory with the function object, but is a requirement for correctness in the case of CUDA type vectors, which use a separate GPU memory space.
+\begin{python}
   if use_cuda:
     # Ensure host-side values of u match device-side values
     u.x.array[:] = u.vector.array
@@ -163,7 +157,7 @@ for i in range(5):
 We will proceed to demonstrate the performance of cuDOLFINx for several representative use cases in which GPU acceleration can significantly enhance FEniCS performance.
 
 \section*{Performance Evaluation}
-We begin with two examples of the performance of the GPU assembly kernels in cuDOLFINx, and then present a use case of complete GPU offloading for both assembly and linear solves. Examples, installation instructions and the source code of cuDOLFINx can be found at \href{https://github.com/bpachev/cuda-dolfinx}{github.com/bpachev/cuda-dolfinx}. The Navier--Stokes example is in a separate repository (\href{https://github.com/bpachev/dolfinx\_ipcs}{github.com/bpachev/dolfinx\_ipcs}). All computations in the following experiments are performed in double precision. The primary hardware used in the following experiments is an NVIDIA GH200 Superchip, which consists of a Hopper GPU with 132 streaming multiprocessors (SMs) connected to a 72-core Grace CPU. The Hopper GPU has a memory bandwidth of 4 TB/s, while the CPU has a memory bandwidth of 384 GB/s~\citep{gh200specs}.
+We begin with two examples of the performance of the GPU assembly kernels in cuDOLFINx, and then present a use case of complete GPU offloading for both assembly and linear solves. Examples, installation instructions and the source code of cuDOLFINx can be found at \href{https://github.com/bpachev/cuda-dolfinx}{github.com/bpachev/cuda-dolfinx}. The Navier--Stokes example is in a separate repository (\href{https://github.com/bpachev/dolfinx\_ipcs}{github.com/bpachev/dolfinx\_ipcs}). All computations in the following experiments are performed in double precision. The primary hardware used in the following experiments is an NVIDIA GH200 Superchip, which consists of a Hopper GPU with 132 streaming multiprocessors (SMs) connected to a 72-core Grace CPU. The Hopper GPU has a memory bandwidth of 4 TB/s, while the CPU has a memory bandwidth of 384 GB/s~\citep{gh200specs}. Experiments were conducted using the Vista system at the Texas Advanced Computing Center (TACC).
 
 \subsection*{Poisson}
 %The classical introductory PDE is the Poisson equation, given by:
@@ -222,7 +216,7 @@ Uniform 4 & 16,464,000 & 2,803,221 & 373.3 & 29.8 \\
 \subsection*{Shallow Water}
 For a more realistic example that also displays the complexity enabled by FEniCSx, we present assembly benchmarks using the variational forms in SWEMniCS~\citep{dawson2024swemnics}, a FEniCSx-based solver for the shallow water equations. SWEMniCS implements a suite of stabilized 2D shallow water solvers with implicit time stepping. Due to the nonlinearity of the shallow water equations, a Newton solver is required at each time step.
 
-We investigated the efficiency of automatically generated CUDA assembly kernels for two stabilized schemes within SWEMniCS: the Discontinuous Galerkin (DG), and the Streamline Upwind Petrov-Galerkin (SUPG) schemes. The DG method uses broken test and trial spaces with a Lax-Freidrichs numerical flux. The DG scheme is more numerically stable, but requires more degrees of freedom than SUPG due to the use of discontinuous function spaces. For each scheme, we averaged the performance of both GPU and CPU assembly kernels over twenty Newton iterations for tidal flow simulations on square domains with uniform triangular meshes. Table~\ref{tab:swe_a100_vs_epyc} shows the speedup when using NVIDIA A100 GPU compared to a 64-core AMD Epyc CPU for assembling the Jacobian matrix and the residual vector for each scheme.
+We investigated the efficiency of automatically generated CUDA assembly kernels for two stabilized schemes within SWEMniCS: the Discontinuous Galerkin (DG), and the Streamline Upwind Petrov-Galerkin (SUPG) schemes. The DG method uses broken test and trial spaces with a Lax-Freidrichs numerical flux. The DG scheme is more numerically stable, but requires more degrees of freedom than SUPG due to the use of discontinuous function spaces. For each scheme, we averaged the performance of both GPU and CPU assembly kernels over twenty Newton iterations for tidal flow simulations on square domains with uniform triangular meshes. Table~\ref{tab:swe_a100_vs_epyc} shows the speedup when using NVIDIA A100 GPU compared to a 64-core AMD Epyc 7763 CPU for assembling the Jacobian matrix and the residual vector for each scheme. The A100 GPU and Epyc CPU were both on the Lonestar6 system at TACC.
 \begin{table}[t]
     \centering
     \begin{tabular}{lrrrrrrr}
@@ -262,7 +256,7 @@ Interestingly, the speedups differ for each variational form. In the case of the
 Using NVIDIA's Nsight Compute profiler, we can better understand the difference in performance between DG and SUPG.
 Profiler results for the ``Tidal 3'' testcase are presented in Table \ref{tab:tidal_prof}. The profiler reports \textit{occupancy}, which indicates the percentage of active threads on the GPU relative to the total GPU thread capacity. Occupancy can be limited by the resources needed per thread, such as shared memory or registers. It can also be impacted by excessive branching or other kernel design flaws. In our case, the generated assembly kernels required a high number of registers, which limited the occupancy to under 20\,\%. However, both the DG and SUPG kernels are able to utilize a large fraction of the device throughput---memory in the case of DG and compute in the case of SUPG.
 
-To further understand the difference in performance between SUPG and DG, we computed the \textit{arithmetic intensity} for both Jacobian assembly kernels, which is the ratio of FLOPS performed to bytes of memory accessed. The arithmetic intensity is 0.22 FLOPS/byte for SUPG and 0.1 FLOPS/byte for DG, which partly explains why SUPG achieves higher compute throughput than DG.
+To further understand the difference in performance between SUPG and DG, we used the Nsight Compute profiler to obtain the \textit{arithmetic intensity} for both Jacobian assembly kernels, which is the ratio of FLOPS performed to bytes of memory accessed. The arithmetic intensity is 0.22 FLOPS/byte for SUPG and 0.1 FLOPS/byte for DG, which partly explains why SUPG achieves higher compute throughput than DG.
 
 Ultimately, the deciding factor in which method is more suitable for GPU offloading is the speedup factor relative to the CPU. By this criteria, SUPG is better in an implicit time stepping context where matrix assembly is required. However, for an explicit time stepping method, only vector assembly is required, and so DG will perform better on the GPU.
 \begin{table}[t]
