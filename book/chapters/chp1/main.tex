@@ -34,23 +34,15 @@ FEniCSx relies on auto-generated kernels to perform elementwise numerical integr
 
 In addition to the elementwise kernels, cuDOLFINx provides GPU-based assembly loops to assemble the local contributions from each element into global matrices or vectors. This requires information about the mesh, boundary conditions, and function spaces to be copied to GPU memory. Internally, cuDOLFINx provides GPU counterparts for many of the data structures used in FEniCSx and automatically performs the data transfer to the GPU. Once data is transferred, it is expected to remain on the GPU, though mechanisms exist for moving data between the CPU and GPU when necessary.
 
-The cuDOLFINx package is an extension of the work of \citep{trotter2023targeting}. The novel contributions since that work are as follows:
+The cuDOLFINx package extends the work of Trotter et al. (2023). In addition to major modifications needed to support DOLFINx 0.9 (the most recent version at the time of writing), the following new features were developed:
 \begin{enumerate}
-    \item The code was upgraded from DOLFINX 0.6 to DOLFINX 0.9, which required major modifications.
-    \item The original work was a fork of DOLFINx, and was refactored to be an add-on package.
     \item Support for boundary integrals was developed from scratch and considerably improved compared to the original version of the code, which only supported boundary integrals in very limited scenarios.
     \item To support DG methods, integrals on interior mesh edges are required. This functionality was added to the original GPU-accelerated code.
     \item Most of the users of FEniCSx utilize the Python version of the library. Consequently, a Python API was developed for the GPU-acceleration capabilities. It was designed to be much simpler to use than the original C++ interface, without loss of functionality.
+    \item The GPU acceleration scheme has been applied to a wider range of problems, including the Navier-Stokes and shallow water equations.
 \end{enumerate}
 
-The main software components of cuDOLFINX are the following:
-\begin{enumerate}
-	\item C++ classes containing CUDA data structures needed for assembly. These mirror corresponding DOLFINx classes (e.g. CUDAForm for Form, CUDAMesh for Mesh, etc.) and are responsible for copying the needed data to the GPU.
-	\item C++ classes which manage the generation, runtime compilation, and launching of CUDA assembly kernels.
-	\item Python bindings for the C++ core.
-\end{enumerate}
-
-Most users will only need to utilize the Python wrapper. It provides Python versions of the C++ CUDA data structure classes, as well as convenience routines for performing assembly operations. We demonstrate its usage in the following section.
+There are three main software components of cuDOLFINX. The first is a set of C++ classes containing CUDA data structures needed for assembly. These mirror corresponding DOLFINx classes (e.g. CUDAForm for Form, CUDAMesh for Mesh, etc.) and are responsible for copying the needed data to the GPU. The second consists of C++ classes which manage the generation, runtime compilation, and launching of CUDA assembly kernels. The final component contains the Python bindings for the C++ core. Most users will only need to utilize the Python wrapper. It provides Python versions of the C++ CUDA data structure classes, as well as convenience routines for performing assembly operations. We demonstrate its usage in the following section.
 
 \section*{Sample Usage}
 
